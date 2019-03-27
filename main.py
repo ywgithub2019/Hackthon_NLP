@@ -5,6 +5,7 @@ import pickle
 import re
 import pandas as pd
 import numpy as np
+from classifier import *
 from keras.models import load_model
 from keras.layers import Add
 from keras.utils import to_categorical
@@ -81,6 +82,43 @@ def sentence_modifications(df, colnum):
 ######### End of data cleaning functions ##########
 
 
+# Build the sentiment words table
+    
+    
+# Here, we just convert string to 1, -1 and 0 for two reviews tables:
+    
+new_path = '/Users/nolwenbrosson/Desktop/Cours Nolwen/Cours Centrale/Hackaton/data/word_sentiment.xlsx'
+word_sentiment = pd.read_excel(new_path)
+word_sentiment["Positive"].loc[word_sentiment.Positive == "Positive"] = 1
+word_sentiment["Positive"].loc[word_sentiment.Positive == "Negative"] = -1 
+ 
+new_path = '/Users/nolwenbrosson/Desktop/Cours Nolwen/Cours Centrale/Hackaton/data/restaurantreviews.csv'
+word_sentiment2 = pd.read_csv(new_path, sep='\t', header= None, encoding = "ISO-8859-1")
+word_sentiment2[0].loc[word_sentiment2[0] == "positive"] = 1
+word_sentiment2[0].loc[word_sentiment2[0] == "negative"] = -1 
+word_sentiment2[0].loc[word_sentiment2[0] == "neutral"] = 0 
+
+# For the second table, just two columns are interesting for us
+word_sentiment2 = pd.concat([word_sentiment2[0], word_sentiment2[4]], axis = 1)
+
+# We want to clean some reviews of the second table
+aspect_term(word_sentiment2, [4])
+sentence_modifications(word_sentiment2, [4])
+
+
+# Let's now merge the two dataframes:
+
+columnsTitles=[4,0]
+word_sentiment2 = word_sentiment2.reindex(columns=columnsTitles)
+word_sentiment2 = word_sentiment2.rename(columns = {0 : 1, 4: 0})
+word_sentiment = word_sentiment.rename(columns= {"a+": 0, "Positive": 1})
+
+
+
+training_reviews = pd.concat([word_sentiment, word_sentiment2])
+
+
+
 ######## Tweets part ##############
 
 
@@ -101,82 +139,64 @@ sentence_modifications(tweets_set, columns_index)
 # First, we create a tokenizer:
 voc_size = 1000
 tokenizer = Tokenizer(num_words = voc_size, filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n', lower=True, split=' ', char_level=False, oov_token=None, document_count=0)
+
 # Give the list of texts to train our tokenizer
 text_for_tokenizer = pd.concat([tweets_set[1], tweets_set[2], tweets_set[3], tweets_set[4], tweets_set[5], tweets_set[6], tweets_set[7], tweets_set[8], tweets_set[9], tweets_set[10]])
-
+fit_tokenizer_1 = pd.concat([word_sentiment[0], word_sentiment2[0]])
+text_for_tokenizer = pd.concat([text_for_tokenizer, fit_tokenizer_1])
 tokenizer.fit_on_texts(text_for_tokenizer)
         
-# Then, we save the existing tokenizer to apply it on new data.
-with open('tokenizer_file', 'wb') as handle:
-    pickle.dump(tokenizer, handle)
-
-new_dataframe = []      
-
-new_dataframe = pd.concat([pd.DataFrame(tokenizer.texts_to_matrix(tweets_set[1])),
-           pd.DataFrame(tokenizer.texts_to_matrix(tweets_set[2])),
-            pd.DataFrame(tokenizer.texts_to_matrix(tweets_set[3])),
-            pd.DataFrame(tokenizer.texts_to_matrix(tweets_set[4])),
-            pd.DataFrame(tokenizer.texts_to_matrix(tweets_set[5])),
-            pd.DataFrame(tokenizer.texts_to_matrix(tweets_set[6])),
-            pd.DataFrame(tokenizer.texts_to_matrix(tweets_set[7])),
-            pd.DataFrame(tokenizer.texts_to_matrix(tweets_set[8])),
-            pd.DataFrame(tokenizer.texts_to_matrix(tweets_set[9])),
-            pd.DataFrame(tokenizer.texts_to_matrix(tweets_set[10])),
-            tweets_set[11],tweets_set[12],tweets_set[13],tweets_set[14],
-            tweets_set[15],tweets_set[16],tweets_set[17],tweets_set[18],
-            tweets_set[19],tweets_set[20]], axis=1)  
-        
-
-########## End of tweets part #################
 
 
+### Let's transform reviews into sentiment score (-1, 0, 1)
+final_dataset = tweets_set   
+classification_tweets(tokenizer,training_reviews,final_dataset)
+
+for i in range(1,11):
+    final_dataset[i] = final_dataset[i] * final_dataset[i+10]
+final_dataset = pd.concat([final_dataset[1],final_dataset[2],
+                           final_dataset[3],
+                           final_dataset[4],
+                           final_dataset[5],
+                           final_dataset[6],
+                           final_dataset[7],
+                           final_dataset[8],
+                           final_dataset[9],
+                           final_dataset[10]],axis=1)
 ######### Financial informations ############        
         
 new_path = '/Users/nolwenbrosson/Desktop/Cours Nolwen/Cours Centrale/Hackaton/data/financial_infos.xlsx'
 financial_dataset = pd.read_excel(new_path)
 financial_dataset = financial_dataset.drop("date", axis=1)
-
+new_path = '/Users/nolwenbrosson/Desktop/Cours Nolwen/Cours Centrale/Hackaton/data/googletrend.csv'
+googletrend = pd.read_csv(new_path, sep=',', header= None)
+googletrend = googletrend.drop(0, axis=0)
+googletrend = googletrend.reset_index()
+# Based on what we found out, we will only keep some of the columns:
+financial_dataset = pd.concat([financial_dataset["BCHAIN_HashRate"],
+                               financial_dataset["LBMA_GOLD_USD_AM"],
+                               googletrend.loc[:,2]],axis=1)
         
+#########################################
+
+# Now we build the final dataset. In order to do that:
+# 1) Build a sentiment analysis model 
+# 2) Convert all our sentences in positive (1) or negative (-1)
+final_dataset = pd.concat([final_dataset, financial_dataset], axis=1)
+
+
+
+
         
 ##############################################
-
-# Now we build the final dataset:
-final_dataset = pd.concat([new_dataframe, financial_dataset], axis=1)
-            
+# The next part is to classify each tweet. 
+# We will use sentiment analysis. The training set will be this one: 
 
 
-# And upload the labels 
-labelsfile = '/Users/nolwenbrosson/Desktop/Cours Nolwen/Cours Centrale/Hackaton/data/label_bitcoins.csv'
-labels = pd.read_csv(labelsfile, sep='\t', header= None, encoding = "ISO-8859-1")
-labels = labels[1309:1674] 
-labels = labels.drop(0, axis=1)
-labels = labels.drop(1, axis=1)
 
 
-polarity_encoder = LabelEncoder()
-transform_polarity = polarity_encoder.fit_transform(labels)
-onehot_polarity = pd.DataFrame(to_categorical(transform_polarity))
-labels = onehot_polarity
 
 
-#### Let's try a simple deep learning model now #####
-from keras.optimizers import SGD
-model = Sequential()
-# Input of size * x 14012 and output of size 512
-model.add(Dense(1024, input_shape=(10023,)))
-# Relu activation function
-model.add(Activation('relu'))
-#model.add(Dense(512))
-#model.add(Activation('relu'))
-# Final output of size 3 (three posible polarities)
-model.add(Dense(2))
-model.add(Activation('softmax'))
-opt = SGD(lr=0.0001,decay=1e-6, momentum=0.9, nesterov=True)
-model.compile(loss='categorical_crossentropy', optimizer=opt, metrics=['accuracy'])
-model.fit(final_dataset, labels, epochs=10, verbose=1)
-model.save('model.simple') # 
-        
-  
         
         
 
