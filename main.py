@@ -86,7 +86,14 @@ def sentence_modifications(df, colnum):
     
     
 # Here, we just convert string to 1, -1 and 0 for two reviews tables:
-    
+new_path = '/Users/nolwenbrosson/Desktop/Cours Nolwen/Cours Centrale/Hackaton/data/train_tweets.csv'
+tweets_classification = pd.read_csv(new_path, sep=',', encoding = "ISO-8859-1")
+tweets_classification["Sentiment"].loc[tweets_classification.Sentiment == 0] = -1 
+tweets_classification = tweets_classification.drop(columns = "ItemID")
+tweets_classification = tweets_classification.iloc[:, ::-1]
+tweets_classification.columns = range(tweets_classification.shape[1])
+
+
 new_path = '/Users/nolwenbrosson/Desktop/Cours Nolwen/Cours Centrale/Hackaton/data/word_sentiment.xlsx'
 word_sentiment = pd.read_excel(new_path)
 word_sentiment["Positive"].loc[word_sentiment.Positive == "Positive"] = 1
@@ -101,12 +108,14 @@ word_sentiment2[0].loc[word_sentiment2[0] == "neutral"] = 0
 # For the second table, just two columns are interesting for us
 word_sentiment2 = pd.concat([word_sentiment2[0], word_sentiment2[4]], axis = 1)
 
-# We want to clean some reviews of the second table
+# We want to clean some reviews of the first and third table
 aspect_term(word_sentiment2, [4])
 sentence_modifications(word_sentiment2, [4])
 
+aspect_term(tweets_classification, [0])
+sentence_modifications(tweets_classification, [0])
 
-# Let's now merge the two dataframes:
+# Let's now merge the three dataframes:
 
 columnsTitles=[4,0]
 word_sentiment2 = word_sentiment2.reindex(columns=columnsTitles)
@@ -115,7 +124,7 @@ word_sentiment = word_sentiment.rename(columns= {"a+": 0, "Positive": 1})
 
 
 
-training_reviews = pd.concat([word_sentiment, word_sentiment2])
+training_reviews = pd.concat([word_sentiment, word_sentiment2, tweets_classification])
 
 
 
@@ -136,13 +145,13 @@ aspect_term(tweets_set, columns_index)
 sentence_modifications(tweets_set, columns_index)
 
         
-# First, we create a tokenizer:
+# Now, we create a tokenizer:
 voc_size = 1000
 tokenizer = Tokenizer(num_words = voc_size, filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n', lower=True, split=' ', char_level=False, oov_token=None, document_count=0)
 
 # Give the list of texts to train our tokenizer
 text_for_tokenizer = pd.concat([tweets_set[1], tweets_set[2], tweets_set[3], tweets_set[4], tweets_set[5], tweets_set[6], tweets_set[7], tweets_set[8], tweets_set[9], tweets_set[10]])
-fit_tokenizer_1 = pd.concat([word_sentiment[0], word_sentiment2[0]])
+fit_tokenizer_1 = pd.concat([word_sentiment[0], word_sentiment2[0],tweets_classification[0]])
 text_for_tokenizer = pd.concat([text_for_tokenizer, fit_tokenizer_1])
 tokenizer.fit_on_texts(text_for_tokenizer)
         
@@ -151,6 +160,9 @@ tokenizer.fit_on_texts(text_for_tokenizer)
 ### Let's transform reviews into sentiment score (-1, 0, 1)
 final_dataset = tweets_set   
 classification_tweets(tokenizer,training_reviews,final_dataset)
+final_dataset = final_dataset.drop(columns = 0)
+final_dataset = final_dataset.apply(pd.to_numeric)
+
 
 for i in range(1,11):
     final_dataset[i] = final_dataset[i] * final_dataset[i+10]
@@ -172,6 +184,7 @@ new_path = '/Users/nolwenbrosson/Desktop/Cours Nolwen/Cours Centrale/Hackaton/da
 googletrend = pd.read_csv(new_path, sep=',', header= None)
 googletrend = googletrend.drop(0, axis=0)
 googletrend = googletrend.reset_index()
+
 # Based on what we found out, we will only keep some of the columns:
 financial_dataset = pd.concat([financial_dataset["BCHAIN_HashRate"],
                                financial_dataset["LBMA_GOLD_USD_AM"],
@@ -183,20 +196,40 @@ financial_dataset = pd.concat([financial_dataset["BCHAIN_HashRate"],
 # 1) Build a sentiment analysis model 
 # 2) Convert all our sentences in positive (1) or negative (-1)
 final_dataset = pd.concat([final_dataset, financial_dataset], axis=1)
+final_dataset.columns = range(final_dataset.shape[1])
 
 
 
+################# 
 
-        
-##############################################
-# The next part is to classify each tweet. 
-# We will use sentiment analysis. The training set will be this one: 
+# Time to build the final model 
+# First, we will import the labels 
+
+labelfile = "/Users/nolwenbrosson/Desktop/Cours Nolwen/Cours Centrale/Hackaton/data/label_bitcoins.csv"
+labels_bitcoin = pd.read_csv(labelfile, sep='\t', header= None, encoding = "ISO-8859-1")
+labels_bitcoin = labels_bitcoin.drop(0, axis=0)
+labels_bitcoin = labels_bitcoin.reset_index()
+labels_bitcoin = labels_bitcoin.loc[1308:1672,2]
 
 
+# Fill nan values:
+final_dataset = final_dataset.fillna(0)
+labels_bitcoin.isna().sum()
 
+labels_bitcoin = labels_bitcoin.apply(pd.to_numeric)
+    
+final_dataset = final_dataset.as_matrix()
+labels_bitcoin = labels_bitcoin.as_matrix()
 
+# Deep learning part: Classic Feed Forward NN   
 
-
-        
-        
-
+model = Sequential()
+# Input of size * x 14012 and output of size 512
+model.add(Dense(6, input_shape=(13,)))
+# Relu activation function
+model.add(Activation('relu'))
+# Final output of size 2 
+model.add(Dense(2))
+model.add(Activation('softmax'))
+model.compile(loss='sparse_categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
+model.fit(final_dataset, labels_bitcoin, epochs=3, verbose=1)
