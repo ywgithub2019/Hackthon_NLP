@@ -1,0 +1,16 @@
+!pip install twitterscraper
+!pip install BeautifulSoup4
+
+def twitterscrapper(list_file,start,end)
+  list_brand = pd.read_excel(list_file)
+
+  # use twitterscrapper to scrape data 
+  # Attention: if we set a long time period we won't get daily data
+  # to fix that, we choose to scrape by month
+  for i in range(len(list_brand)):
+    brand = list_brand.iloc[i]
+    !twitterscraper brand -bd start -ed end  -o brand.csv -l 10000 -c --lang en -p 5
+    brand = pd.read_csv("brand.csv")
+    brand.to_csv(str(list_brand.iloc[i].to_list()[0])+"2017_05_06"+".csv")
+  return brand
+
