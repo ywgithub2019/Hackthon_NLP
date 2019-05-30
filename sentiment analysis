@@ -1,0 +1,85 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[221]:
+
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from tqdm import tqdm_notebook as tqdm
+
+
+# In[34]:
+
+
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+analyser = SentimentIntensityAnalyzer()
+
+def print_sentiment_scores(sentence):
+    snt = analyser.polarity_scores(sentence)
+    print("{:-<40} {}".format(sentence, str(snt)))
+def sentiment_scores(sentence):
+    snt = analyser.polarity_scores(sentence)
+    return snt
+
+
+# In[16]:
+
+
+list_of_brands = pd.read_excel("Social_Data/Liste des marques - Requête Vivatech.xlsx",sep = '|',encoding = "utf-8")
+
+
+# In[222]:
+
+
+tweets = pd.DataFrame()
+
+for brand in tqdm(list_of_brands.iloc[:,0]):
+    print(brand)
+    continue
+    globals()[str(brand)] = pd.read_csv(str("twitter_data/"+brand+".csv"),encoding = "utf-8")
+
+    df = globals()[str(brand)]
+
+    t=df['timestamp']
+
+    date=[]
+    for i in range(len(t)):
+        try:
+            date.append(t[i][0:10])
+        except:
+            print(t[i])
+            
+    df['date']=date
+        
+    score_list = []
+    for text in df["text"]:
+        score = sentiment_scores(text)
+        score_list.append(score["compound"])
+
+    df["score"] = score_list
+
+    df["ret_score"] = df["retweets"]*df["score"]
+    df["likes_score"] = df["likes"]*df["score"]
+
+    trend = df.groupby(by="date",as_index=False).sum()
+
+
+    trend = trend[["date","likes_score","ret_score","score"]]
+
+    trend["brand"] = str(brand)
+    tweets = pd.concat([tweets,trend],axis = 0)
+
+
+# In[225]:
+
+
+tweets.reset_index(inplace=True,drop = True)
+
+
+# In[226]:
+
+
+tweets
